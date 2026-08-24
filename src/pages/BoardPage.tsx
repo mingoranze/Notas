@@ -2,10 +2,42 @@ import { useEffect, useRef, useState } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 import { doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { useParams } from 'react-router-dom'
+import { AuthControls } from '../components/AuthControls'
 import { Board } from '../components/board/Board'
 import { mockBoard } from '../data/mockBoard'
+import { useAuth } from '../lib/AuthProvider'
 import { db } from '../lib/firebase'
 import type { BoardType } from '../types'
+
+function getDemoStorageKey(boardId: string) {
+  return `demo-board:${boardId}`
+}
+
+function loadDemoBoard(boardId: string): BoardType {
+  if (typeof window === 'undefined') {
+    return { ...mockBoard, id: boardId }
+  }
+
+  try {
+    const serializedBoard = window.localStorage.getItem(getDemoStorageKey(boardId))
+
+    if (!serializedBoard) {
+      return { ...mockBoard, id: boardId }
+    }
+
+    return { ...(JSON.parse(serializedBoard) as BoardType), id: boardId }
+  } catch {
+    return { ...mockBoard, id: boardId }
+  }
+}
+
+function saveDemoBoard(boardId: string, board: BoardType) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(getDemoStorageKey(boardId), JSON.stringify(board))
+}
 
 function createColumnId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -20,6 +52,8 @@ function createCardId() {
 }
 
 export function BoardPage() {
+  const { status: authStatus } = useAuth()
+  const isOwner = authStatus === 'authorized'
   const { boardId } = useParams<{ boardId?: string }>()
   const resolvedBoardId = boardId ?? mockBoard.id
   const [board, setBoard] = useState<BoardType>({ ...mockBoard, id: resolvedBoardId })
@@ -27,9 +61,16 @@ export function BoardPage() {
   const [isLocallyEditing, setIsLocallyEditing] = useState(false)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Escuta mudanças do Firestore
+  // Carrega o quadro: Firestore para o dono autenticado, localStorage para modo demonstração
   useEffect(() => {
-    if (!db) {
+    if (authStatus === 'loading') {
+      return
+    }
+
+    setIsInitialized(false)
+
+    if (!isOwner || !db) {
+      setBoard(loadDemoBoard(resolvedBoardId))
       setIsInitialized(true)
       return
     }
@@ -56,11 +97,16 @@ export function BoardPage() {
     })
 
     return unsubscribe
-  }, [resolvedBoardId, isLocallyEditing])
+  }, [authStatus, isOwner, resolvedBoardId, isLocallyEditing])
 
-  // Salva mudanças locais no Firestore com debounce
+  // Salva mudanças locais: Firestore (com debounce) para o dono, localStorage para modo demonstração
   useEffect(() => {
-    if (!db || !isInitialized) {
+    if (!isInitialized) {
+      return
+    }
+
+    if (!isOwner || !db) {
+      saveDemoBoard(resolvedBoardId, board)
       return
     }
 
@@ -82,7 +128,7 @@ export function BoardPage() {
         clearTimeout(saveTimeoutRef.current)
       }
     }
-  }, [board, resolvedBoardId, isInitialized])
+  }, [board, resolvedBoardId, isOwner, isInitialized])
 
   const handleAddColumn = () => {
     setBoard((currentBoard) => ({
@@ -252,7 +298,15 @@ export function BoardPage() {
   return (
     <div className="flex h-screen flex-col bg-paper">
       <header className="shrink-0 border-b border-line bg-navy px-4 py-3 text-paper shadow-sm">
-        <h1 className="font-display text-lg font-medium text-paper">{board.title}</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="font-display text-lg font-medium text-paper">{board.title}</h1>
+          <AuthControls />
+        </div>
+        {!isOwner && (
+          <p className="mt-1 text-[11px] text-paper/60">
+            Modo demonstração — as alterações ficam salvas só neste navegador.
+          </p>
+        )}
       </header>
       <main className="min-h-0 flex-1">
         <Board
