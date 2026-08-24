@@ -11,6 +11,13 @@ npm run dev
 
 Abre em `http://localhost:5173`.
 
+## Publicação no GitHub Pages
+
+O deploy é feito automaticamente pelo GitHub Actions após um push na branch
+`main`. Depois da execução do workflow, o sistema fica disponível em:
+
+`https://mingoranze.github.io/Notas/`
+
 ## O que já está pronto (passo 1 do roteiro)
 
 - Projeto Vite + React + TypeScript + Tailwind
