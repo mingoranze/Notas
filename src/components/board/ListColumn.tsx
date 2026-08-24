@@ -55,7 +55,11 @@ export function ListColumn({ list, onRemove, onRename, onAddCard, onRemoveCard, 
       }`}
     >
       {/* header fixo */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-4 py-3">
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex shrink-0 cursor-grab items-center justify-between gap-3 border-b border-line px-4 py-3 active:cursor-grabbing"
+      >
         {isEditing ? (
           <input
             autoFocus
@@ -77,8 +81,6 @@ export function ListColumn({ list, onRemove, onRename, onAddCard, onRemoveCard, 
         ) : (
           <button
             type="button"
-            {...attributes}
-            {...listeners}
             onClick={() => setIsEditing(true)}
             className="flex-1 overflow-hidden text-left font-display text-base font-medium text-ink"
           >
