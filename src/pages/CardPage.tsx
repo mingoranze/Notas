@@ -1,29 +1,34 @@
-import { useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Excalidraw } from '@excalidraw/excalidraw'
 import type { BinaryFiles } from '@excalidraw/excalidraw/types'
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import '@excalidraw/excalidraw/index.css'
 import { Link, useParams } from 'react-router-dom'
+import { doc, onSnapshot, setDoc } from 'firebase/firestore'
+import { useAuth } from '../lib/AuthProvider'
+import { db } from '../lib/firebase'
 
 type PersistedScene = {
   elements: readonly ExcalidrawElement[]
   files?: BinaryFiles
 }
 
+const emptyScene: PersistedScene = { elements: [] }
+
 function getStorageKey(cardId: string) {
   return `excalidraw-scene:${cardId}`
 }
 
-function loadScene(cardId: string): PersistedScene {
+function loadDemoScene(cardId: string): PersistedScene {
   if (typeof window === 'undefined') {
-    return { elements: [] }
+    return emptyScene
   }
 
   try {
     const serializedScene = window.localStorage.getItem(getStorageKey(cardId))
 
     if (!serializedScene) {
-      return { elements: [] }
+      return emptyScene
     }
 
     const parsedScene = JSON.parse(serializedScene) as PersistedScene
@@ -33,14 +38,71 @@ function loadScene(cardId: string): PersistedScene {
       files: parsedScene.files ?? {},
     }
   } catch {
-    return { elements: [] }
+    return emptyScene
   }
+}
+
+function saveDemoScene(cardId: string, scene: PersistedScene) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(getStorageKey(cardId), JSON.stringify(scene))
 }
 
 export function CardPage() {
   const { cardId } = useParams()
   const activeCardId = cardId ?? 'untitled-card'
-  const scene = useMemo(() => loadScene(activeCardId), [activeCardId])
+  const { status: authStatus } = useAuth()
+  const isOwner = authStatus === 'authorized'
+
+  const [scene, setScene] = useState<PersistedScene>(emptyScene)
+  const [isInitialized, setIsInitialized] = useState(false)
+  const isLocallyEditingRef = useRef(false)
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Carrega o desenho: Firestore para o dono autenticado, localStorage para modo demonstração
+  useEffect(() => {
+    if (authStatus === 'loading') {
+      return
+    }
+
+    setIsInitialized(false)
+
+    if (!isOwner || !db) {
+      setScene(loadDemoScene(activeCardId))
+      setIsInitialized(true)
+      return
+    }
+
+    const sceneRef = doc(db, 'cards', activeCardId)
+
+    const unsubscribe = onSnapshot(sceneRef, (snapshot) => {
+      if (!isLocallyEditingRef.current) {
+        setScene(snapshot.exists() ? (snapshot.data() as PersistedScene) : emptyScene)
+      }
+
+      setIsInitialized(true)
+    })
+
+    return unsubscribe
+  }, [authStatus, isOwner, activeCardId])
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  if (!isInitialized) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-paper text-sm text-ink/60">
+        Carregando anotação…
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen flex-col bg-paper">
@@ -61,12 +123,30 @@ export function CardPage() {
             key={activeCardId}
             initialData={scene}
             onChange={(elements, appState, files) => {
+              void appState
               const nextScene: PersistedScene = {
                 elements,
                 files,
               }
 
-              window.localStorage.setItem(getStorageKey(activeCardId), JSON.stringify(nextScene))
+              if (!isOwner || !db) {
+                saveDemoScene(activeCardId, nextScene)
+                return
+              }
+
+              const firestore = db
+
+              if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current)
+              }
+
+              isLocallyEditingRef.current = true
+
+              saveTimeoutRef.current = setTimeout(() => {
+                void setDoc(doc(firestore, 'cards', activeCardId), nextScene).finally(() => {
+                  isLocallyEditingRef.current = false
+                })
+              }, 500)
             }}
             UIOptions={{
               canvasActions: {
