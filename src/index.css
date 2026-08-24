@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-paper text-ink antialiased;
+  background-image: radial-gradient(circle at top, rgba(183, 170, 152, 0.28), transparent 35%),
+    linear-gradient(180deg, #f5f1ec 0%, #efe8df 100%);
+}
+
+/* rolagem horizontal do quadro, com snap suave pro mobile */
+.board-scroll {
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.board-scroll > * {
+  scroll-snap-align: start;
+}
+
+.board-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.board-scroll::-webkit-scrollbar-track {
+  background: rgba(199, 193, 184, 0.35);
+  border-radius: 9999px;
+}
+
+.board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(95, 113, 104, 0.8);
+  border-radius: 9999px;
+}
