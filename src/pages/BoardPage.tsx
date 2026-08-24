@@ -120,7 +120,12 @@ export function BoardPage() {
 
     saveTimeoutRef.current = setTimeout(() => {
       void setDoc(doc(firestore, 'boards', resolvedBoardId), board, { merge: true })
-      setIsLocallyEditing(false)
+        .catch((error) => {
+          console.error('Falha ao salvar o quadro no Firestore', error)
+        })
+        .finally(() => {
+          setIsLocallyEditing(false)
+        })
     }, 500)
 
     return () => {

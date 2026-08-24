@@ -13,7 +13,30 @@ type PersistedScene = {
   files?: BinaryFiles
 }
 
+type StoredSceneDoc = {
+  json: string
+}
+
 const emptyScene: PersistedScene = { elements: [] }
+
+function parseStoredScene(raw: unknown): PersistedScene {
+  const json = (raw as StoredSceneDoc | undefined)?.json
+
+  if (typeof json !== 'string') {
+    return emptyScene
+  }
+
+  try {
+    const parsedScene = JSON.parse(json) as PersistedScene
+
+    return {
+      elements: Array.isArray(parsedScene.elements) ? parsedScene.elements : [],
+      files: parsedScene.files ?? {},
+    }
+  } catch {
+    return emptyScene
+  }
+}
 
 function getStorageKey(cardId: string) {
   return `excalidraw-scene:${cardId}`
@@ -79,7 +102,7 @@ export function CardPage() {
 
     const unsubscribe = onSnapshot(sceneRef, (snapshot) => {
       if (!isLocallyEditingRef.current) {
-        setScene(snapshot.exists() ? (snapshot.data() as PersistedScene) : emptyScene)
+        setScene(snapshot.exists() ? parseStoredScene(snapshot.data()) : emptyScene)
       }
 
       setIsInitialized(true)
@@ -143,9 +166,15 @@ export function CardPage() {
               isLocallyEditingRef.current = true
 
               saveTimeoutRef.current = setTimeout(() => {
-                void setDoc(doc(firestore, 'cards', activeCardId), nextScene).finally(() => {
-                  isLocallyEditingRef.current = false
-                })
+                const storedDoc: StoredSceneDoc = { json: JSON.stringify(nextScene) }
+
+                void setDoc(doc(firestore, 'cards', activeCardId), storedDoc)
+                  .catch((error) => {
+                    console.error('Falha ao salvar a anotação no Firestore', error)
+                  })
+                  .finally(() => {
+                    isLocallyEditingRef.current = false
+                  })
               }, 500)
             }}
             UIOptions={{
